@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-66@dygg*)%@_1624_f*mc^79xs96ucz8wxa$e()+vig!2pg5hm
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["https://balloon-tracker.onrender.com/"]
 
 
 # Application definition
