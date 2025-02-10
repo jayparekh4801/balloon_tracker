@@ -1,59 +1,83 @@
 import requests
 import numpy as np
 import json
-
 from django.shortcuts import render
 from django.http import JsonResponse
-
-BALLOONS_DATA = None
+from django.core.cache import cache  # Optional: Django cache system to store data
 
 def impute_nan_values(arr):
-    # Iterate through all elements along the second dimension (axis 1)
+    # Efficiently impute NaN values along features
     for i in range(arr.shape[1]):  # Loop through 1000 instances
-        for j in range(arr.shape[2]):  # Loop through the 3rd dimension (features)
+        for j in range(arr.shape[2]):  # Loop through features
             # If a value is NaN, impute with the mean of the non-NaN values along the first axis (24 values)
             if np.isnan(arr[:, i, j]).any():
                 non_nan_values = arr[:, i, j][~np.isnan(arr[:, i, j])]
                 if non_nan_values.size > 0:
-                    arr[:, i, j] = np.nan_to_num(arr[:, i, j], nan=np.mean(non_nan_values))  # Impute with the mean of the available values
+                    mean_value = np.mean(non_nan_values)
+                    arr[:, i, j] = np.where(np.isnan(arr[:, i, j]), mean_value, arr[:, i, j])
 
     return arr
 
 def load_data():
+    # Load data and cache it for reuse
     balloons_data = []
-    global BALLOONS_DATA
     hours = [f"{i:02d}" for i in range(24)]
 
     for hour in hours:
         try:
             current_api = f"https://a.windbornesystems.com/treasure/{hour}.json"
-            response = requests.request("GET", current_api)
-            if response.status_code == 200:
-                data = response.json()
-                balloons_data.append(data)
-        except Exception as e:
-            print(hour)
-            text_data = "[" + response.text
-            data = json.loads(text_data)
+            response = requests.get(current_api)
+            response.raise_for_status()  # Check if request was successful
+
+            data = response.json()
             balloons_data.append(data)
-            print(e)
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching data for hour {hour}: {e}")
+            # Handle failed request, e.g., use default data or skip
+            # balloons_data.append([])  # Empty data or default value
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON for hour {hour}: {e}")
+            data = "[" + response.text
+            data = json.loads(data)
+            balloons_data.append(data)
+
+    # Convert data to a numpy array
     balloons_data = np.array(balloons_data)
 
-    BALLOONS_DATA = impute_nan_values(balloons_data)
+    # Impute missing values
+    balloons_data = impute_nan_values(balloons_data)
 
-load_data()
+    # Cache data in Django cache (optional)
+    cache.set('balloons_data', balloons_data, timeout=86400)  # Cache for 24 hours
 
 def get_data(request):
+    # Ensure data is loaded
+    if cache.get('balloons_data') is None:
+        load_data()
+
     return render(request, 'index.html')
 
 def get_hourly_data(request, hour):
     try:
         hour = int(hour)  # Convert to integer
+
+        # Fetch data from cache
+        balloons_data = cache.get('balloons_data')
         
-        # Ensure data is loaded and hour is within range
-        if BALLOONS_DATA is None or hour >= BALLOONS_DATA.shape[0]:
+        if balloons_data is None or hour >= balloons_data.shape[0]:
             return JsonResponse({"error": "Invalid hour or data not available"}, status=400)
 
-        return JsonResponse({"balloons": BALLOONS_DATA[hour,:150, :].tolist()})
+        return JsonResponse({"balloons": balloons_data[hour, :150, :].tolist()})
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+def get_balloon_trajectory(request, balloon_number):
+    try:
+        balloon_number = int(balloon_number)
+        balloons_data = cache.get('balloons_data')
+
+        trajectory = balloons_data[:, balloon_number, :]
+        return JsonResponse({"trajectory": trajectory.tolist()})
+    except (ValueError, IndexError):
+        return JsonResponse({"error": "Invalid balloon number"}, status=400)

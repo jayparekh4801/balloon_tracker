@@ -21,5 +21,6 @@ from balloon_tracker import views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', views.get_data),
-    path('get_data/<int:hour>/', views.get_hourly_data)
+    path('get_data/<int:hour>/', views.get_hourly_data),
+    path('get_balloon_trajectory/<int:balloon_number>/', views.get_balloon_trajectory),
 ]

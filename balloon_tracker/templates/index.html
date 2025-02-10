@@ -242,19 +242,25 @@
 </body>
 </html> {% endcomment %}
 
-
-{% comment %} <!DOCTYPE html>
+<!DOCTYPE html> 
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Balloon Trajectories</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; }
         #chart-container { width: 80%; height: 500px; margin: auto; display: flex; justify-content: space-between; }
+        #3d-chart-container { flex-grow: 1;
+            width: 100%;
+            height: 100vh;
+        margin: 0 15 0 0 }
         #slider-container { margin-top: 20px; }
-        svg { width: 80%; height: 500px; border: 1px solid black; }
+        #chart-container svg { width: 80%; height: 500px; border: 1px solid black; }
+        #1d-chart-container { width: 80%; height: 500px; margin: auto; }
+        #1d-chart-container svg { width: 80%; height: 500px; border: 1px solid black; }
         .axis-label {
             font-size: 14px;
             font-weight: bold;
@@ -284,10 +290,30 @@
         <div id="color-bar-container" class="color-bar-container"></div>  <!-- Color bar for altitude -->
     </div>
 
+    <div id="3d-chart-container" style="margin-top:25px">
+        <div id="trajectoryChart3d"></div> <!-- 3D Plot container -->  <!-- Color bar for altitude -->
+    </div>
+
+    <div id='1d-chart-container' style="margin-top:25px">
+        <div id="balloon-container" style="margin-bottom:25px">
+            <label for="balloonInput">Enter Balloon Number (0-999): </label>
+            <input type="number" id="balloonInput" min="0" max="999" value="0">
+            <button id="plotBalloon">Plot Trajectory</button>
+        </div>
+            <h3>Trajectory of Balloon <span id="balloonTitle">0</span> Over Time</h3>
+            <svg id="individualChart"></svg>
+        </div>
+    </div>
+
     <script>
         let hourSlider = document.getElementById('hourSlider');
         let hourValue = document.getElementById('hourValue');
         let svg = d3.select("#trajectoryChart");
+        let chartContainer3d = document.getElementById('trajectoryChart3d');
+        let balloonInput = document.getElementById('balloonInput');
+        let plotBalloonButton = document.getElementById('plotBalloon');
+        let balloonTitle = document.getElementById('balloonTitle');
+        let individualSvg = d3.select("#individualChart");
 
         let colorBarSvg;
         let colorBarScale;
@@ -300,7 +326,6 @@
         }
 
         function plotTrajectories(flightData, hour) {
-            console.log(flightData);
             hourValue.textContent = hour;
             svg.selectAll("*").remove();  // Clear previous plot
             
@@ -411,465 +436,12 @@
                     .style("text-anchor", "middle")
                     .text(d3.max(flightData, d => d[2]));
             }
+            plotTrajectories3D(flightData, hour)
+
         }
 
-        hourSlider.addEventListener('input', function() {
-            fetchHourlyData(this.value);
-        });
-
-        fetchHourlyData(0); // Initial load
-    </script>
-
-</body>
-</html> {% endcomment %}
-{% comment %} <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Balloon Trajectories</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; }
-        #chart-container { width: 80%; height: 500px; margin: auto; display: flex; justify-content: space-between; }
-        #slider-container { margin-top: 20px; }
-        svg { width: 80%; height: 500px; border: 1px solid black; }
-        .axis-label {
-            font-size: 14px;
-            font-weight: bold;
-        }
-        .grid-line {
-            stroke: #ccc;
-            stroke-dasharray: 2;
-        }
-        .color-bar-container {
-            width: 30px;
-            height: 500px;
-            margin-left: 20px;
-            border: 1px solid black;
-        }
-    </style>
-</head>
-<body>
-
-    <div id="slider-container">
-        <label for="hourSlider">Select Hour: </label>
-        <input type="range" id="hourSlider" min="0" max="23" value="0">
-        <span id="hourValue">0</span>
-    </div>
-
-    <div id="chart-container">
-        <svg id="trajectoryChart"></svg>
-        <div id="color-bar-container" class="color-bar-container"></div>  <!-- Color bar for altitude -->
-    </div>
-
-    <script>
-        let hourSlider = document.getElementById('hourSlider');
-        let hourValue = document.getElementById('hourValue');
-        let svg = d3.select("#trajectoryChart");
-
-        let colorBarSvg;
-        let colorBarScale;
-
-        function fetchHourlyData(hour) {
-            fetch(`/get_data/${hour}/`)
-                .then(response => response.json())
-                .then(data => plotTrajectories(data.balloons, hour))
-                .catch(error => console.error("Error fetching data:", error));
-        }
-
-        function plotTrajectories(flightData, hour) {
-            console.log(flightData);
-            hourValue.textContent = hour;
-            svg.selectAll("*").remove();  // Clear previous plot
-            
-            let width = svg.node().getBoundingClientRect().width;
-            let height = svg.node().getBoundingClientRect().height;
-            
-            let xScale = d3.scaleLinear()
-                .domain([d3.min(flightData, d => d[1]), d3.max(flightData, d => d[1])])
-                .range([50, width - 50]);
-
-            let yScale = d3.scaleLinear()
-                .domain([d3.min(flightData, d => d[0]), d3.max(flightData, d => d[0])])
-                .range([height - 50, 50]);
-
-            colorBarScale = d3.scaleSequential(d3.interpolateBlues)  // Darker blue for higher altitude
-                .domain([d3.min(flightData, d => d[2]), d3.max(flightData, d => d[2])]);
-
-            // Add grid lines
-            svg.append("g")
-                .attr("class", "grid")
-                .selectAll("line")
-                .data(xScale.ticks(10))
-                .enter().append("line")
-                .attr("class", "grid-line")
-                .attr("x1", d => xScale(d))
-                .attr("x2", d => xScale(d))
-                .attr("y1", 50)
-                .attr("y2", height - 50);
-
-            svg.append("g")
-                .attr("class", "grid")
-                .selectAll("line")
-                .data(yScale.ticks(10))
-                .enter().append("line")
-                .attr("class", "grid-line")
-                .attr("x1", 50)
-                .attr("x2", width - 50)
-                .attr("y1", d => yScale(d))
-                .attr("y2", d => yScale(d));
-
-            // Add circles for each balloon data point
-            svg.selectAll("circle")
-                .data(flightData)
-                .enter()
-                .append("circle")
-                .attr("cx", d => xScale(d[1]))  // Longitude
-                .attr("cy", d => yScale(d[0]))  // Latitude
-                .attr("r", 4)
-                .attr("fill", d => colorBarScale(d[2]))  // Altitude-based color
-                .attr("opacity", 0.8);
-
-            // Add X-axis
-            svg.append("g")
-                .attr("transform", `translate(0, ${height - 50})`)
-                .call(d3.axisBottom(xScale).ticks(10))
-                .append("text")
-                .attr("class", "axis-label")
-                .attr("x", width - 50)
-                .attr("y", -10)
-                .style("text-anchor", "end")
-                .text("Longitude");
-
-            // Add Y-axis
-            svg.append("g")
-                .attr("transform", `translate(50, 0)`)
-                .call(d3.axisLeft(yScale).ticks(10))
-                .append("text")
-                .attr("class", "axis-label")
-                .attr("x", -50)
-                .attr("y", 10)
-                .style("text-anchor", "middle")
-                .text("Latitude");
-
-            // Create color bar for altitude (only once)
-            if (!colorBarSvg) {
-    let colorBarHeight = 500;
-    let colorBarContainer = d3.select("#color-bar-container");
-
-    colorBarSvg = colorBarContainer.append("svg")
-        .attr("width", 30)
-        .attr("height", colorBarHeight);
-
-    // Create gradient color bar
-    colorBarSvg.selectAll("rect")
-        .data(d3.range(colorBarHeight))
-        .enter().append("rect")
-        .attr("x", 0)
-        .attr("y", d => d)
-        .attr("width", 20)
-        .attr("height", 1)
-        .attr("fill", d => colorBarScale(d / colorBarHeight));
-
-    // Add scale to color bar beside it (right side)
-    let colorBarTickScale = d3.scaleLinear()
-        .domain([d3.min(flightData, d => d[2]), d3.max(flightData, d => d[2])])
-        .range([colorBarHeight, 0]);  // Reverse range for reversed scale
-
-    // Add axis for the scale beside the color bar
-    colorBarContainer.append("g")
-        .attr("transform", "translate(35, 0)")  // Move to the right side of the color bar
-        .call(d3.axisRight(colorBarTickScale)
-            .tickFormat(d3.format(".2f")))  // Format altitude values to 2 decimal points
-        .selectAll(".tick text")  // Reversing the tick labels' orientation
-        .style("text-anchor", "middle")
-        .style("transform", "rotate(180deg)"); // This will reverse the labels
-}
-        }
-
-        hourSlider.addEventListener('input', function() {
-            fetchHourlyData(this.value);
-        });
-
-        fetchHourlyData(0); // Initial load
-    </script>
-
-</body>
-</html> {% endcomment %}
-
-
-{% comment %} <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Scatter Plot with D3.js and Three.js</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body { margin: 0; }
-        canvas { display: block; }
-    </style>
-</head>
-<body>
-
-<script>
-    // Set up Three.js scene, camera, and renderer
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    // Create random data points
-    const data = [];
-    for (let i = 0; i < 100; i++) {
-        data.push([Math.random() * 100, Math.random() * 100, Math.random() * 100]);
-    }
-
-    // Create Three.js geometry and material for points
-    const geometry = new THREE.BufferGeometry();
-    const vertices = [];
-    const colors = [];
-
-    data.forEach(d => {
-        vertices.push(d[0], d[1], d[2]);  // x, y, z
-        colors.push(Math.random(), Math.random(), Math.random()); // Random color for each point
-    });
-
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-    const material = new THREE.PointsMaterial({ size: 5, vertexColors: true });
-    const points = new THREE.Points(geometry, material);
-    scene.add(points);
-
-    // Position the camera
-    camera.position.z = 150;
-
-    // Set up an animate function to render the scene
-    function animate() {
-        requestAnimationFrame(animate);
-
-        // Rotate the points for some animation
-        points.rotation.x += 0.01;
-        points.rotation.y += 0.01;
-
-        renderer.render(scene, camera);
-    }
-    animate();
-
-    // Adjust the renderer size when the window is resized
-    window.addEventListener('resize', () => {
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-    });
-</script>
-
-</body>
-</html> {% endcomment %}
-
-
-{% comment %} <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Balloon Trajectories</title>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 0; }
-        #slider-container { margin-top: 20px; }
-        #chart-container { width: 100%; height: 100vh; }
-        canvas { display: block; }
-    </style>
-</head>
-<body>
-
-    <div id="slider-container">
-        <label for="hourSlider">Select Hour: </label>
-        <input type="range" id="hourSlider" min="0" max="23" value="0">
-        <span id="hourValue">0</span>
-    </div>
-
-    <div id="chart-container">
-        <!-- 3D rendering will happen here -->
-    </div>
-
-    <script>
-        let hourSlider = document.getElementById('hourSlider');
-        let hourValue = document.getElementById('hourValue');
-        
-        // Create the Three.js scene, camera, and renderer
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('chart-container').appendChild(renderer.domElement);
-
-        // Axis Helpers
-        const axesHelper = new THREE.AxesHelper(5);
-        scene.add(axesHelper);
-
-        // Lighting
-        const light = new THREE.AmbientLight(0x404040); // Ambient light
-        scene.add(light);
-
-        const pointLight = new THREE.PointLight(0xFFFFFF, 1, 100);
-        pointLight.position.set(50, 50, 50);
-        scene.add(pointLight);
-
-        // Initial camera position
-        camera.position.z = 150;
-
-        // Fetch data and plot
-        function fetchHourlyData(hour) {
-            fetch(`/get_data/${hour}/`)
-                .then(response => response.json())
-                .then(data => plotTrajectories(data.balloons, hour))
-                .catch(error => console.error("Error fetching data:", error));
-        }
-
-        // Plot the balloon trajectories in 3D
-        function plotTrajectories(flightData, hour) {
-            console.log(flightData);
-            hourValue.textContent = hour;
-            
-            // Remove previous points if any
-            while(scene.children.length > 0) {
-                scene.remove(scene.children[0]);
-            }
-            
-            // Re-add the axis helper and light
-            scene.add(axesHelper);
-            scene.add(light);
-            scene.add(pointLight);
-            
-            // Create a geometry to hold the points
-            const geometry = new THREE.BufferGeometry();
-            const vertices = [];
-            const colors = [];
-
-            flightData.forEach(d => {
-                const lat = d[0]; // y
-                const lon = d[1]; // x
-                const alt = d[2]; // z
-
-                // Add coordinates to the vertices array
-                vertices.push(lon, lat, alt);
-
-                // Create color based on altitude
-                colors.push(0, 0, 1); // You can change this to a scale based on altitude
-            });
-
-            // Set the geometry attributes for positions and colors
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-
-            // Create a material for points
-            const material = new THREE.PointsMaterial({ size: 5, vertexColors: true });
-            const points = new THREE.Points(geometry, material);
-            scene.add(points);
-
-            render();
-        }
-
-        // Render the scene and camera
-        function render() {
-            requestAnimationFrame(render);
-            renderer.render(scene, camera);
-        }
-
-        hourSlider.addEventListener('input', function() {
-            fetchHourlyData(this.value);
-        });
-
-        // Initial load
-        fetchHourlyData(0);
-
-        // Adjust the renderer size when the window is resized
-        window.addEventListener('resize', () => {
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-        });
-    </script>
-
-</body>
-</html> {% endcomment %}
-
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Balloon Trajectories 3D</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <style>
-        <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        #slider-container {
-            margin-top: 20px;
-            padding: 10px;
-            background: #f0f0f0;
-        }
-        #chart-container {
-            flex-grow: 1;
-            width: 100%;
-            height: 100vh; /* Full viewport height */
-        }
-        #hourValue {
-            margin-left: 10px;
-            font-weight: bold;
-        }
-        input[type="range"] {
-            width: 300px;
-        }
-        .canvas{
-            height: 100%;
-            width: 100%;
-        }
-    </style>
-    </style>
-</head>
-<body>
-
-    <div id="slider-container">
-        <label for="hourSlider">Select Hour: </label>
-        <input type="range" id="hourSlider" min="0" max="23" value="0">
-        <span id="hourValue">0</span>
-    </div>
-
-    <div id="chart-container">
-        <div id="trajectoryChart"></div> <!-- 3D Plot container -->
-    </div>
-
-    <script>
-        let hourSlider = document.getElementById('hourSlider');
-        let hourValue = document.getElementById('hourValue');
-        let chartContainer = document.getElementById('trajectoryChart');
-
-        function fetchHourlyData(hour) {
-            fetch(`/get_data/${hour}/`)
-                .then(response => response.json())
-                .then(data => plotTrajectories(data.balloons, hour))
-                .catch(error => console.error("Error fetching data:", error));
-        }
-
-        function plotTrajectories(flightData, hour) {
-            console.log(flightData);
-            hourValue.textContent = hour;
+        function plotTrajectories3D(flightData, hour) {
+            //hourValue.textContent = hour;
 
             // Prepare the data for plotting
             let longitude = flightData.map(d => d[1]);
@@ -904,8 +476,109 @@
             };
 
             let data = [trace];
-            Plotly.newPlot(chartContainer, data, layout);
+            Plotly.newPlot(chartContainer3d, data, layout);
         }
+
+        function fetchBalloonTrajectory(balloonNumber) {
+            fetch(`/get_balloon_trajectory/${balloonNumber}/`)
+                .then(response => response.json())
+                .then(data => {
+                    plotBalloonTrajectory(data.trajectory, balloonNumber);
+                })
+                .catch(error => console.error("Error fetching balloon data:", error));
+        }
+
+        function plotBalloonTrajectory(trajectory, balloonNumber) {
+            balloonTitle.textContent = balloonNumber;
+            individualSvg.selectAll("*").remove();  // Clear previous plot
+            
+            let width = individualSvg.node().getBoundingClientRect().width;
+            let height = individualSvg.node().getBoundingClientRect().height;
+            
+            let xScale = d3.scaleLinear()
+                .domain([0, 23]) // Hours
+                .range([50, width - 50]);
+
+            let yScale = d3.scaleLinear()
+                .domain([d3.min(trajectory, d => d[2]), d3.max(trajectory, d => d[2])])
+                .range([height - 50, 50]);
+
+            let line = d3.line()
+                .x((d, i) => xScale(i))  // Hour index
+                .y(d => yScale(d[2]));  // Altitude
+
+            individualSvg.append("path")
+                .datum(trajectory)
+                .attr("fill", "none")
+                .attr("stroke", "red")
+                .attr("stroke-width", 2)
+                .attr("d", line);
+            
+            // Add grid lines
+            individualSvg.append("g")
+                .attr("class", "grid")
+                .selectAll("line")
+                .data(xScale.ticks(10))
+                .enter().append("line")
+                .attr("class", "grid-line")
+                .attr("x1", d => xScale(d))
+                .attr("x2", d => xScale(d))
+                .attr("y1", 50)
+                .attr("y2", height - 50);
+
+            individualSvg.append("g")
+                .attr("class", "grid")
+                .selectAll("line")
+                .data(yScale.ticks(10))
+                .enter().append("line")
+                .attr("class", "grid-line")
+                .attr("x1", 50)
+                .attr("x2", width - 50)
+                .attr("y1", d => yScale(d))
+                .attr("y2", d => yScale(d));
+
+            // Add circles for each balloon data point
+            individualSvg.selectAll("circle")
+                .data(flightData)
+                .enter()
+                .append("circle")
+                .attr("cx", d => xScale(d[1]))  // Longitude
+                .attr("cy", d => yScale(d[0]))  // Latitude
+                .attr("r", 4)
+                .attr("fill", d => colorBarScale(d[2]))  // Altitude-based color
+                .attr("opacity", 0.8);
+
+            // Add X-axis
+            individualSvg.append("g")
+                .attr("transform", `translate(0, ${height - 50})`)
+                .call(d3.axisBottom(xScale).ticks(10))
+                .append("text")
+                .attr("class", "axis-label")
+                .attr("x", width - 50)
+                .attr("y", -10)
+                .style("text-anchor", "end")
+                .text("Longitude");
+
+            // Add Y-axis
+            individualSvg.append("g")
+                .attr("transform", `translate(50, 0)`)
+                .call(d3.axisLeft(yScale).ticks(10))
+                .append("text")
+                .attr("class", "axis-label")
+                .attr("x", -50)
+                .attr("y", 10)
+                .style("text-anchor", "middle")
+                .text("Latitude");
+        }
+
+        plotBalloonButton.addEventListener('click', function() {
+            let balloonNumber = parseInt(balloonInput.value);
+            if (balloonNumber >= 0 && balloonNumber <= 999) {
+                fetchBalloonTrajectory(balloonNumber);
+            } else {
+                alert("Please enter a valid balloon number (0-999)");
+            }
+        });
 
         hourSlider.addEventListener('input', function() {
             fetchHourlyData(this.value);
